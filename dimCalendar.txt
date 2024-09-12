@@ -1,0 +1,60 @@
+%%configure -f
+{ 
+            "defaultLakehouse": {
+                "name": '<name of the lakehouse>',
+                "id": '<lakehouse id>',
+                "workspaceId": '<workspace id of the lakehouse>'
+            }
+}
+
+
+https://fabric.guru/how-to-attach-a-default-lakehouse-to-a-notebook-in-fabric
+
+
+import pandas as pd
+import holidays     #https://pypi.org/project/holidays/
+
+def DimDate(start_date, end_date):
+    from pandas.tseries.offsets import MonthEnd, QuarterEnd
+    dfdate = pd.DataFrame({"Date": pd.date_range(start=f'{start_date}', end=f'{end_date}', freq='D')})
+    def get_end_of_month(date):
+        if date.is_month_end == True:
+            return date
+        else:
+            return date + MonthEnd(1)
+    def get_end_of_quarter(date):
+        if date.is_quarter_end == True:
+            return date
+        else:
+            return date + QuarterEnd(1)
+    dfdate["Day"] = dfdate.Date.dt.day
+    dfdate["Week"] = dfdate.Date.dt.weekday
+    dfdate["Month"] = dfdate.Date.dt.month
+    dfdate["MonthName"] = dfdate.Date.dt.month_name()
+    dfdate["Quarter"] = dfdate.Date.dt.quarter
+    dfdate["Year"] = dfdate.Date.dt.year
+    dfdate["FiscalYear"] = dfdate['Date'].dt.to_period('A-JUN')
+    dfdate['EndOfMonth'] = dfdate['Date'].apply(get_end_of_month)
+    dfdate['EOM'] = dfdate['Date'].dt.is_month_end
+    dfdate['EndOfQuarter'] = dfdate['Date'].apply(get_end_of_quarter)
+    dfdate['EOQ'] = dfdate['Date'].dt.is_quarter_end
+    return dfdate
+
+def DimDateWorkday(start_date, end_date):
+    dfdate = DimDate(start_date, end_date)
+    dfdate['Workday'] = True
+    for index, row in dfdate.iterrows():
+        if row['Day'] in ['Saturday', 'Sunday']:
+            dfdate.loc[index, 'Workday'] = False
+        date = row['Date'].strftime("%Y-%m-%d")
+        if date in holidays.France():
+            dfdate.loc[index, 'Workday'] = False
+    return dfdate
+
+#DimDate('2024-01-01', '2025-12-31')
+#DimDateWorkday('2024-01-01', '2025-12-31')
+df_DimDate = spark.createDataFrame(DimDateWorkday('2024-01-01', '2025-12-31'))
+df_DimDate.write.mode("overwrite").format("delta").saveAsTable('calandar')
+
+
+https://github.com/Pulsweb/MyScripts/blob/main/Fabric/DateDimensionTable.ipynb
